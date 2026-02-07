@@ -224,8 +224,8 @@ project-information-manager/
 │   │   ├── stock_service.go        # Stock CRUD + Summary/Full View
 │   │   ├── state_service.go        # State ライフサイクル管理 + Summary/Full View
 │   │   ├── context_service.go      # RAG横断検索・コンテキスト集約
-│   │   ├── rag_service.go          # RAG検索・インデックス管理
-│   │   └── token_tracker.go        # トークン使用量追跡
+│   │   ├── services.go             # サービス初期化・ベクトル補完
+│   │   └── search_helpers.go       # 検索共通ヘルパー
 │   ├── repository/                 # 永続化層
 │   │   ├── interfaces.go           # リポジトリインターフェース定義
 │   │   ├── stock_repository.go     # Stock リポジトリ（ファイルシステム）
@@ -237,10 +237,6 @@ project-information-manager/
 │   │   ├── tools_stock.go          # stock_manage ファサードツール
 │   │   ├── tools_state.go          # state_manage ファサードツール
 │   │   └── tools_context.go        # context_search 統合検索ツール
-│   ├── llm/                        # LLM統合
-│   │   ├── gateway.go              # LLMプロバイダー抽象化
-│   │   ├── anthropic.go            # Anthropic Claude連携
-│   │   └── openai.go               # OpenAI連携
 │   └── config/                     # 設定管理
 │       └── config.go               # アプリケーション設定
 ├── configs/
@@ -345,7 +341,6 @@ const (
 │ pim-server (Go binary)                  │
 │      │                                  │
 │      ├── stocks/  (ローカルファイル)      │
-│      ├── skills/  (ローカルファイル)      │
 │      ├── states.db (SQLite)             │
 │      └── vectors/ (chromem-go)          │
 └─────────────────────────────────────────┘
@@ -355,6 +350,29 @@ const (
 * MCP stdioトランスポートでAI Agentと通信
 * すべてのデータはローカルファイルシステム + SQLiteに永続化
 * 外部サービス依存なし（LLM API呼び出しを除く）
+
+#### RAG設定（実装済み）
+
+`context_search` / `stock_manage action=search` / `state_manage action=search` は、埋め込み設定が有効な場合に `chromem-go` によるセマンティック検索を利用する。
+
+設定例:
+
+```bash
+# OpenAI埋め込み
+export PIM_RAG_ENABLED=true
+export PIM_RAG_COLLECTION=pim-context
+export PIM_RAG_EMBEDDING_PROVIDER=openai
+export PIM_RAG_EMBEDDING_MODEL=text-embedding-3-small
+export PIM_RAG_EMBEDDING_API_KEY=sk-...
+
+# Ollama埋め込み
+export PIM_RAG_ENABLED=true
+export PIM_RAG_EMBEDDING_PROVIDER=ollama
+export PIM_RAG_EMBEDDING_MODEL=nomic-embed-text
+export PIM_RAG_EMBEDDING_OLLAMA_BASE_URL=http://localhost:11434/api
+```
+
+埋め込み設定が不足している場合、サーバーは起動を継続し、検索は部分一致フォールバック（title/content/description/tags）で動作する。
 
 #### Phase 2: クラウドベース・マルチユーザー（将来）
 
@@ -413,4 +431,3 @@ Phase 1ではローカル完結とし、将来的にJira / GitHub Issues連携�
 3. オンデマンド: 特定チケットの最新情報を部分取得
 4. 書き戻し: ローカルで更新したStateを外部ツールに反映
 ```
-

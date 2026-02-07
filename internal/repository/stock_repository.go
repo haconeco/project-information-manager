@@ -119,8 +119,8 @@ func (r *FileStockRepository) List(ctx context.Context, projectID string, opts *
 			return nil // skip invalid files
 		}
 
-		// プロジェクトIDフィルタ
-		if stock.ProjectID != projectID {
+		// projectID が指定されている場合のみフィルタ
+		if projectID != "" && stock.ProjectID != projectID {
 			return nil
 		}
 

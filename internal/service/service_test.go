@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/haconeco/project-information-manager/internal/domain"
 	"github.com/haconeco/project-information-manager/internal/repository"
@@ -207,6 +209,176 @@ func TestStockServiceSearchSummaryWithVector(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
+}
+
+func TestStockServiceSearchSummaryFallbackWhenVectorFails(t *testing.T) {
+	stockRepo := repository.NewFileStockRepository(t.TempDir())
+	stockSvc := NewStockService(stockRepo, nil)
+
+	_, err := stockSvc.Create(context.Background(), CreateStockInput{
+		ProjectID: "proj-1",
+		Category:  "design",
+		Priority:  "P0",
+		Title:     "API設計",
+		Content:   "REST API content",
+	})
+	if err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+
+	vector := &fakeVectorRepo{searchErr: errors.New("vector unavailable")}
+	searchSvc := NewStockService(stockRepo, vector)
+
+	results, err := searchSvc.SearchSummary(context.Background(), "api", 10, "proj-1")
+	if err != nil {
+		t.Fatalf("search fallback error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected fallback result, got %d", len(results))
+	}
+}
+
+func TestContextServiceSearchWeightedRanking(t *testing.T) {
+	stockRepo := repository.NewFileStockRepository(t.TempDir())
+	now := time.Now()
+	stock := &domain.Stock{
+		ID:        "STK-DESIGN-001",
+		ProjectID: "proj-1",
+		Category:  domain.CategoryDesign,
+		Priority:  domain.PriorityP0,
+		Title:     "API方針",
+		Content:   "content",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := stockRepo.Create(context.Background(), stock); err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+
+	stateRepo := newFakeStateRepo()
+	stateRepo.states["STA-TASK-001"] = &domain.State{
+		ID:          "STA-TASK-001",
+		ProjectID:   "proj-1",
+		Type:        domain.StateTypeTask,
+		Status:      domain.StatusOpen,
+		Priority:    domain.PriorityP3,
+		Title:       "task",
+		Description: "desc",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	vector := &fakeVectorRepo{
+		results: []repository.SearchResult{
+			{ID: "STA-TASK-001", Similarity: 0.95, Metadata: map[string]string{"type": "state"}},
+			{ID: "STK-DESIGN-001", Similarity: 0.70, Metadata: map[string]string{"type": "stock"}},
+		},
+	}
+	svc := NewContextService(stockRepo, stateRepo, vector)
+
+	result, err := svc.Search(context.Background(), "api", "proj-1", 1)
+	if err != nil {
+		t.Fatalf("search error: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected total 1, got %d", result.Total)
+	}
+	if len(result.Stocks) != 1 {
+		t.Fatalf("expected weighted top result to be stock, got %+v", result)
+	}
+	if len(result.States) != 0 {
+		t.Fatalf("expected no states in top 1 result")
+	}
+}
+
+func TestServicesBootstrapVectorIndex(t *testing.T) {
+	stockRepo := repository.NewFileStockRepository(t.TempDir())
+	now := time.Now()
+	if err := stockRepo.Create(context.Background(), &domain.Stock{
+		ID:        "STK-DESIGN-001",
+		ProjectID: "proj-1",
+		Category:  domain.CategoryDesign,
+		Priority:  domain.PriorityP1,
+		Title:     "existing stock",
+		Content:   "content",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create stock1: %v", err)
+	}
+	if err := stockRepo.Create(context.Background(), &domain.Stock{
+		ID:        "STK-DESIGN-002",
+		ProjectID: "proj-1",
+		Category:  domain.CategoryDesign,
+		Priority:  domain.PriorityP1,
+		Title:     "new stock",
+		Content:   "content",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create stock2: %v", err)
+	}
+
+	stateRepo := newFakeStateRepo()
+	stateRepo.states["STA-TASK-001"] = &domain.State{
+		ID:          "STA-TASK-001",
+		ProjectID:   "proj-1",
+		Type:        domain.StateTypeTask,
+		Status:      domain.StatusOpen,
+		Priority:    domain.PriorityP1,
+		Title:       "new state",
+		Description: "desc",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	archivedAt := now
+	stateRepo.states["STA-TASK-002"] = &domain.State{
+		ID:          "STA-TASK-002",
+		ProjectID:   "proj-1",
+		Type:        domain.StateTypeTask,
+		Status:      domain.StatusArchived,
+		Priority:    domain.PriorityP1,
+		Title:       "archived state",
+		Description: "desc",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		ArchivedAt:  &archivedAt,
+	}
+
+	vector := &fakeVectorRepo{
+		existing: map[string]bool{
+			"STK-DESIGN-001": true,
+			"STA-TASK-002":   true,
+		},
+	}
+	repos := &repository.Repositories{Stock: stockRepo, State: stateRepo, Vector: vector}
+	services := NewServices(repos)
+
+	if err := services.BootstrapVectorIndex(context.Background()); err != nil {
+		t.Fatalf("bootstrap error: %v", err)
+	}
+
+	if !containsID(vector.upserts, "STK-DESIGN-002") {
+		t.Fatalf("expected missing stock to be upserted, got %v", vector.upserts)
+	}
+	if !containsID(vector.upserts, "STA-TASK-001") {
+		t.Fatalf("expected active state to be upserted, got %v", vector.upserts)
+	}
+	if containsID(vector.upserts, "STK-DESIGN-001") {
+		t.Fatalf("did not expect existing stock to be upserted")
+	}
+	if !containsID(vector.deletes, "STA-TASK-002") {
+		t.Fatalf("expected archived state vector to be deleted, got %v", vector.deletes)
+	}
+}
+
+func containsID(ids []string, target string) bool {
+	for _, id := range ids {
+		if id == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestStockSummary(t *testing.T) {

@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 
 	"github.com/haconeco/project-information-manager/internal/config"
 
@@ -39,12 +40,22 @@ func NewRepositories(cfg *config.Config) (*Repositories, error) {
 		return nil, err
 	}
 
-	return &Repositories{
+	repos := &Repositories{
 		Stock: NewFileStockRepository(cfg.StocksDir()),
 		State: stateRepo,
-		// TODO: Vector リポジトリは chromem-go 統合時に実装
-		db: db,
-	}, nil
+		db:    db,
+	}
+
+	if cfg.RAG.Enabled {
+		vectorRepo, err := NewChromemVectorRepository(cfg)
+		if err != nil {
+			slog.Warn("failed to initialize vector repository; fallback to non-vector search", "error", err)
+		} else {
+			repos.Vector = vectorRepo
+		}
+	}
+
+	return repos, nil
 }
 
 // Close はリポジトリのリソースを解放する。

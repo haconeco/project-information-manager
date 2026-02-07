@@ -93,6 +93,14 @@ func TestFileStockRepositoryCRUDAndList(t *testing.T) {
 		t.Fatalf("expected 2 stocks for project, got %d", len(listAll))
 	}
 
+	allProjects, err := repo.List(ctx, "", nil)
+	if err != nil {
+		t.Fatalf("list all projects: %v", err)
+	}
+	if len(allProjects) != 3 {
+		t.Fatalf("expected 3 stocks across all projects, got %d", len(allProjects))
+	}
+
 	limited, err := repo.List(ctx, "proj-1", &StockListOptions{Limit: 1})
 	if err != nil {
 		t.Fatalf("list with limit: %v", err)

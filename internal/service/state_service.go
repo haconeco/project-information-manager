@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/haconeco/project-information-manager/internal/domain"
@@ -137,6 +139,21 @@ func (s *StateService) Update(ctx context.Context, id string, input UpdateStateI
 		return nil, fmt.Errorf("failed to update state: %w", err)
 	}
 
+	if s.vectorRepo != nil {
+		if state.Status == domain.StatusArchived {
+			_ = s.vectorRepo.Delete(ctx, state.ID)
+		} else {
+			metadata := map[string]string{
+				"type":       "state",
+				"project_id": state.ProjectID,
+				"state_type": string(state.Type),
+				"status":     string(state.Status),
+				"priority":   state.Priority.String(),
+			}
+			_ = s.vectorRepo.Upsert(ctx, state.ID, state.Title+"\n"+state.Description, metadata)
+		}
+	}
+
 	return state, nil
 }
 
@@ -192,30 +209,31 @@ func (s *StateService) ListSummary(ctx context.Context, projectID string, opts *
 
 // Search はセマンティック検索でStateを検索する。
 func (s *StateService) Search(ctx context.Context, query string, limit int, projectID string) ([]*domain.State, error) {
-	if s.vectorRepo == nil {
-		return nil, nil
-	}
-
-	filters := map[string]string{
-		"type":       "state",
-		"project_id": projectID,
-	}
-
-	results, err := s.vectorRepo.Search(ctx, query, limit, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search states: %w", err)
-	}
-
-	var states []*domain.State
-	for _, result := range results {
-		state, err := s.stateRepo.Get(ctx, result.ID)
-		if err != nil {
-			continue
+	if s.vectorRepo != nil {
+		filters := map[string]string{
+			"type":       "state",
+			"project_id": projectID,
 		}
-		states = append(states, state)
+
+		results, err := s.vectorRepo.Search(ctx, query, limit, filters)
+		if err == nil {
+			var states []*domain.State
+			for _, result := range results {
+				state, err := s.stateRepo.Get(ctx, result.ID)
+				if err != nil {
+					continue
+				}
+				if state.Status == domain.StatusArchived {
+					continue
+				}
+				states = append(states, state)
+			}
+			return states, nil
+		}
+		slog.Warn("vector state search failed, fallback to keyword search", "error", err)
 	}
 
-	return states, nil
+	return s.fallbackSearch(ctx, query, limit, projectID)
 }
 
 // SearchSummary はセマンティック検索でStateをサマリビューで検索する。
@@ -229,6 +247,39 @@ func (s *StateService) SearchSummary(ctx context.Context, query string, limit in
 		summaries = append(summaries, state.ToSummary())
 	}
 	return summaries, nil
+}
+
+func (s *StateService) fallbackSearch(ctx context.Context, query string, limit int, projectID string) ([]*domain.State, error) {
+	states, err := s.stateRepo.List(ctx, projectID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list states for fallback search: %w", err)
+	}
+
+	matched := make([]*domain.State, 0, len(states))
+	for _, state := range states {
+		if state.Status == domain.StatusArchived {
+			continue
+		}
+		if matchesQuery(query, state.Title, state.Description, joinTags(state.Tags)) {
+			matched = append(matched, state)
+		}
+	}
+
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].Priority != matched[j].Priority {
+			return matched[i].Priority < matched[j].Priority
+		}
+		return matched[i].UpdatedAt.After(matched[j].UpdatedAt)
+	})
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if len(matched) > limit {
+		matched = matched[:limit]
+	}
+
+	return matched, nil
 }
 
 func isValidStateType(t domain.StateType) bool {

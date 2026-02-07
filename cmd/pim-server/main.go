@@ -44,6 +44,9 @@ func main() {
 
 	// サービス層初期化
 	services := service.NewServices(repos)
+	if err := services.BootstrapVectorIndex(context.Background()); err != nil {
+		slog.Warn("failed to bootstrap vector index; continuing without blocking startup", "error", err)
+	}
 
 	// MCPサーバー初期化・起動
 	ctx, cancel := context.WithCancel(context.Background())
@@ -75,6 +78,7 @@ func ensureDataDirs(cfg *config.Config) error {
 	dirs := []string{
 		cfg.DataDir,
 		cfg.StocksDir(),
+		cfg.VectorsDir(),
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

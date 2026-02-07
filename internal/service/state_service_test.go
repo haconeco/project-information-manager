@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -44,7 +45,7 @@ func (f *fakeStateRepo) Update(ctx context.Context, state *domain.State) error {
 func (f *fakeStateRepo) List(ctx context.Context, projectID string, opts *repository.StateListOptions) ([]*domain.State, error) {
 	var out []*domain.State
 	for _, state := range f.states {
-		if state.ProjectID != projectID {
+		if projectID != "" && state.ProjectID != projectID {
 			continue
 		}
 		if opts != nil {
@@ -69,19 +70,75 @@ func (f *fakeStateRepo) List(ctx context.Context, projectID string, opts *reposi
 }
 
 type fakeVectorRepo struct {
-	results []repository.SearchResult
+	results   []repository.SearchResult
+	searchErr error
+	existing  map[string]bool
+	upserts   []string
+	deletes   []string
 }
 
 func (f *fakeVectorRepo) Upsert(ctx context.Context, id string, content string, metadata map[string]string) error {
+	if f.existing != nil {
+		f.existing[id] = true
+	}
+	f.upserts = append(f.upserts, id)
 	return nil
 }
 
 func (f *fakeVectorRepo) Search(ctx context.Context, query string, limit int, filters map[string]string) ([]repository.SearchResult, error) {
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
 	return f.results, nil
 }
 
 func (f *fakeVectorRepo) Delete(ctx context.Context, id string) error {
+	if f.existing != nil {
+		delete(f.existing, id)
+	}
+	f.deletes = append(f.deletes, id)
 	return nil
+}
+
+func (f *fakeVectorRepo) Exists(ctx context.Context, id string) (bool, error) {
+	if f.existing != nil {
+		return f.existing[id], nil
+	}
+	for _, r := range f.results {
+		if r.ID == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func TestStateServiceSearchSummaryFallbackWhenVectorFails(t *testing.T) {
+	repo := newFakeStateRepo()
+	repo.states["STA-TASK-001"] = &domain.State{
+		ID:          "STA-TASK-001",
+		ProjectID:   "proj-1",
+		Type:        domain.StateTypeTask,
+		Status:      domain.StatusOpen,
+		Priority:    domain.PriorityP0,
+		Title:       "API review",
+		Description: "check API contracts",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	vector := &fakeVectorRepo{searchErr: errors.New("vector unavailable")}
+	svc := NewStateService(repo, vector)
+
+	results, err := svc.SearchSummary(context.Background(), "api", 10, "proj-1")
+	if err != nil {
+		t.Fatalf("search fallback error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected fallback result, got %d", len(results))
+	}
+	if results[0].ID != "STA-TASK-001" {
+		t.Fatalf("unexpected ID: %s", results[0].ID)
+	}
 }
 
 func cloneState(s *domain.State) *domain.State {
@@ -178,14 +235,14 @@ func TestStateServiceUpdateArchived(t *testing.T) {
 func TestStateServiceSearchSummaryWithVector(t *testing.T) {
 	repo := newFakeStateRepo()
 	repo.states["STA-TASK-001"] = &domain.State{
-		ID:         "STA-TASK-001",
-		ProjectID:  "proj-1",
-		Type:       domain.StateTypeTask,
-		Status:     domain.StatusOpen,
-		Priority:   domain.PriorityP1,
-		Title:      "Task",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:        "STA-TASK-001",
+		ProjectID: "proj-1",
+		Type:      domain.StateTypeTask,
+		Status:    domain.StatusOpen,
+		Priority:  domain.PriorityP1,
+		Title:     "Task",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	vector := &fakeVectorRepo{results: []repository.SearchResult{{ID: "STA-TASK-001"}}}
@@ -203,15 +260,15 @@ func TestStateServiceSearchSummaryWithVector(t *testing.T) {
 func TestStateServiceListSummary(t *testing.T) {
 	repo := newFakeStateRepo()
 	repo.states["STA-ISSUE-001"] = &domain.State{
-		ID:         "STA-ISSUE-001",
-		ProjectID:  "proj-1",
-		Type:       domain.StateTypeIssue,
-		Status:     domain.StatusOpen,
-		Priority:   domain.PriorityP1,
-		Title:      "Issue",
-		Tags:       []string{"bug"},
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:        "STA-ISSUE-001",
+		ProjectID: "proj-1",
+		Type:      domain.StateTypeIssue,
+		Status:    domain.StatusOpen,
+		Priority:  domain.PriorityP1,
+		Title:     "Issue",
+		Tags:      []string{"bug"},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	svc := NewStateService(repo, nil)

@@ -39,6 +39,9 @@ mcp_servers:
 - MCPクライアント（例: Claude Code / Cursor など、MCP stdio を利用できるもの）
 - `pim-server` バイナリのパス（実行可能になっていること）
 - 新規プロジェクトのID（例: `proj-foo`）
+- （RAG有効化時）埋め込み設定
+  - OpenAI: `PIM_RAG_EMBEDDING_API_KEY`
+  - Ollama: ローカルで埋め込みモデルを用意（例: `nomic-embed-text`）
 
 ## 1. MCPサーバー起動
 
@@ -47,6 +50,27 @@ MCPクライアントの設定に `pim-server` を登録し、stdio モードで
 - `stock_manage`（静的情報: 設計、ルール、管理方針など）
 - `state_manage`（動的情報: タスク、課題、変更など）
 - `context_search`（Stock/State 横断検索）
+
+### 1.1 RAG（ベクトル検索）を有効化する場合
+
+`context_search` / `stock_manage action=search` / `state_manage action=search` は、埋め込み設定が有効な場合にセマンティック検索を利用します。
+
+```
+# 例: OpenAI埋め込み
+export PIM_RAG_ENABLED=true
+export PIM_RAG_COLLECTION=pim-context
+export PIM_RAG_EMBEDDING_PROVIDER=openai
+export PIM_RAG_EMBEDDING_MODEL=text-embedding-3-small
+export PIM_RAG_EMBEDDING_API_KEY=sk-...
+
+# 例: Ollama埋め込み
+export PIM_RAG_ENABLED=true
+export PIM_RAG_EMBEDDING_PROVIDER=ollama
+export PIM_RAG_EMBEDDING_MODEL=nomic-embed-text
+export PIM_RAG_EMBEDDING_OLLAMA_BASE_URL=http://localhost:11434/api
+```
+
+埋め込み設定が不足している場合、サーバーは起動を継続し、`search` は部分一致フォールバックで動作します。
 
 ## 2. 使い方（AIエージェントとユーザの共同作業）
 

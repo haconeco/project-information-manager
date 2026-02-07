@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -23,6 +24,9 @@ type Config struct {
 
 	// MCPサーバー設定
 	MCP MCPConfig `yaml:"mcp"`
+
+	// RAG設定
+	RAG RAGConfig `yaml:"rag"`
 }
 
 // LLMConfig はLLMプロバイダーの設定を保持する。
@@ -38,6 +42,21 @@ type MCPConfig struct {
 	Name      string `yaml:"name"`
 }
 
+// RAGConfig はRAG機能の設定を保持する。
+type RAGConfig struct {
+	Enabled    bool               `yaml:"enabled"`
+	Collection string             `yaml:"collection"`
+	Embedding  RAGEmbeddingConfig `yaml:"embedding"`
+}
+
+// RAGEmbeddingConfig は埋め込み生成の設定を保持する。
+type RAGEmbeddingConfig struct {
+	Provider      string `yaml:"provider"`        // "openai" | "ollama"
+	Model         string `yaml:"model"`           // 例: text-embedding-3-small
+	APIKey        string `yaml:"api_key"`         // openai用
+	OllamaBaseURL string `yaml:"ollama_base_url"` // ollama用
+}
+
 // Load は設定ファイルを読み込む。ファイルが存在しない場合はデフォルト値を使用する。
 func Load() (*Config, error) {
 	cfg := &Config{
@@ -50,6 +69,15 @@ func Load() (*Config, error) {
 		MCP: MCPConfig{
 			Transport: "stdio",
 			Name:      "project-information-manager",
+		},
+		RAG: RAGConfig{
+			Enabled:    true,
+			Collection: "pim-context",
+			Embedding: RAGEmbeddingConfig{
+				Provider:      "openai",
+				Model:         "text-embedding-3-small",
+				OllamaBaseURL: "http://localhost:11434/api",
+			},
 		},
 	}
 
@@ -81,6 +109,26 @@ func Load() (*Config, error) {
 	}
 	if v := os.Getenv("PIM_LLM_MODEL"); v != "" {
 		cfg.LLM.Model = v
+	}
+	if v := os.Getenv("PIM_RAG_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.RAG.Enabled = enabled
+		}
+	}
+	if v := os.Getenv("PIM_RAG_COLLECTION"); v != "" {
+		cfg.RAG.Collection = v
+	}
+	if v := os.Getenv("PIM_RAG_EMBEDDING_PROVIDER"); v != "" {
+		cfg.RAG.Embedding.Provider = v
+	}
+	if v := os.Getenv("PIM_RAG_EMBEDDING_MODEL"); v != "" {
+		cfg.RAG.Embedding.Model = v
+	}
+	if v := os.Getenv("PIM_RAG_EMBEDDING_API_KEY"); v != "" {
+		cfg.RAG.Embedding.APIKey = v
+	}
+	if v := os.Getenv("PIM_RAG_EMBEDDING_OLLAMA_BASE_URL"); v != "" {
+		cfg.RAG.Embedding.OllamaBaseURL = v
 	}
 
 	return cfg, nil

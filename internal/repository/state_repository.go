@@ -147,8 +147,10 @@ func (r *SQLiteStateRepository) List(ctx context.Context, projectID string, opts
 	var conditions []string
 	var args []any
 
-	conditions = append(conditions, "project_id = ?")
-	args = append(args, projectID)
+	if projectID != "" {
+		conditions = append(conditions, "project_id = ?")
+		args = append(args, projectID)
+	}
 
 	if opts != nil {
 		if opts.Type != nil {
@@ -172,8 +174,12 @@ func (r *SQLiteStateRepository) List(ctx context.Context, projectID string, opts
 
 	query := `
 	SELECT id, project_id, type, status, priority, title, description, resolution, tags, ref_ids, created_at, updated_at, archived_at
-	FROM states
-	WHERE ` + strings.Join(conditions, " AND ") + `
+	FROM states`
+	if len(conditions) > 0 {
+		query += `
+	WHERE ` + strings.Join(conditions, " AND ")
+	}
+	query += `
 	ORDER BY priority ASC, updated_at DESC
 	`
 

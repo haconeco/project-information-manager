@@ -102,6 +102,14 @@ func TestSQLiteStateRepositoryCRUDAndList(t *testing.T) {
 		t.Fatalf("expected 2 states, got %d", len(listAll))
 	}
 
+	allProjects, err := repo.List(ctx, "", &StateListOptions{IncludeArchived: true})
+	if err != nil {
+		t.Fatalf("list all projects: %v", err)
+	}
+	if len(allProjects) != 2 {
+		t.Fatalf("expected 2 states across all projects, got %d", len(allProjects))
+	}
+
 	listType, err := repo.List(ctx, "proj-1", &StateListOptions{Type: ptrStateType(domain.StateTypeIssue), IncludeArchived: true})
 	if err != nil {
 		t.Fatalf("list type: %v", err)

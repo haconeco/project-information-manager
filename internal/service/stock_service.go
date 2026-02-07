@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -163,31 +165,27 @@ func (s *StockService) ListSummary(ctx context.Context, projectID string, opts *
 
 // Search はセマンティック検索でStockを検索する。
 func (s *StockService) Search(ctx context.Context, query string, limit int, projectID string) ([]*domain.Stock, error) {
-	if s.vectorRepo == nil {
-		// ベクトルDBが未設定の場合は空結果を返す
-		return nil, nil
-	}
-
-	filters := map[string]string{
-		"type":       "stock",
-		"project_id": projectID,
-	}
-
-	results, err := s.vectorRepo.Search(ctx, query, limit, filters)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search stocks: %w", err)
-	}
-
-	var stocks []*domain.Stock
-	for _, result := range results {
-		stock, err := s.stockRepo.Get(ctx, result.ID)
-		if err != nil {
-			continue
+	if s.vectorRepo != nil {
+		filters := map[string]string{
+			"type":       "stock",
+			"project_id": projectID,
 		}
-		stocks = append(stocks, stock)
+		results, err := s.vectorRepo.Search(ctx, query, limit, filters)
+		if err == nil {
+			var stocks []*domain.Stock
+			for _, result := range results {
+				stock, err := s.stockRepo.Get(ctx, result.ID)
+				if err != nil {
+					continue
+				}
+				stocks = append(stocks, stock)
+			}
+			return stocks, nil
+		}
+		slog.Warn("vector stock search failed, fallback to keyword search", "error", err)
 	}
 
-	return stocks, nil
+	return s.fallbackSearch(ctx, query, limit, projectID)
 }
 
 // SearchSummary はセマンティック検索でStockをサマリビューで検索する。
@@ -201,6 +199,36 @@ func (s *StockService) SearchSummary(ctx context.Context, query string, limit in
 		summaries = append(summaries, stock.ToSummary())
 	}
 	return summaries, nil
+}
+
+func (s *StockService) fallbackSearch(ctx context.Context, query string, limit int, projectID string) ([]*domain.Stock, error) {
+	stocks, err := s.stockRepo.List(ctx, projectID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list stocks for fallback search: %w", err)
+	}
+
+	matched := make([]*domain.Stock, 0, len(stocks))
+	for _, stock := range stocks {
+		if matchesQuery(query, stock.Title, stock.Content, joinTags(stock.Tags)) {
+			matched = append(matched, stock)
+		}
+	}
+
+	sort.Slice(matched, func(i, j int) bool {
+		if matched[i].Priority != matched[j].Priority {
+			return matched[i].Priority < matched[j].Priority
+		}
+		return matched[i].UpdatedAt.After(matched[j].UpdatedAt)
+	})
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if len(matched) > limit {
+		matched = matched[:limit]
+	}
+
+	return matched, nil
 }
 
 func isValidCategory(c domain.StockCategory) bool {

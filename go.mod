@@ -4,6 +4,7 @@ go 1.25.7
 
 require (
 	github.com/mark3labs/mcp-go v0.43.2
+	github.com/philippgille/chromem-go v0.7.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.44.3
 )

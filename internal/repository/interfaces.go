@@ -52,12 +52,12 @@ type StateRepository interface {
 
 // StateListOptions はState一覧取得時のフィルタリングオプション。
 type StateListOptions struct {
-	Type           *domain.StateType
-	Status         *domain.StateStatus
-	Priority       *domain.Priority
+	Type            *domain.StateType
+	Status          *domain.StateStatus
+	Priority        *domain.Priority
 	IncludeArchived bool
-	Limit          int
-	Offset         int
+	Limit           int
+	Offset          int
 }
 
 // VectorRepository はベクトルインデックスの管理を担うインターフェース。
@@ -71,6 +71,9 @@ type VectorRepository interface {
 
 	// Delete はドキュメントをベクトルインデックスから削除する。
 	Delete(ctx context.Context, id string) error
+
+	// Exists はドキュメントがベクトルインデックスに存在するかを返す。
+	Exists(ctx context.Context, id string) (bool, error)
 }
 
 // SearchResult はベクトル検索の結果を表す。

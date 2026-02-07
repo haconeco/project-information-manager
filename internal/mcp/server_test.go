@@ -114,10 +114,10 @@ func TestStockManageHandlers(t *testing.T) {
 	}
 
 	result, _ = srv.handleStockManage(ctx, newRequest(map[string]any{
-		"action":     "update",
-		"stock_id":   stockID,
-		"priority":   "P0",
-		"content":    "updated",
+		"action":   "update",
+		"stock_id": stockID,
+		"priority": "P0",
+		"content":  "updated",
 	}))
 	if result.IsError {
 		t.Fatalf("unexpected error on update: %s", getText(t, result))
@@ -218,6 +218,46 @@ func TestContextSearchHandlerValidation(t *testing.T) {
 	result, _ = srv.handleContextSearch(ctx, newRequest(map[string]any{"query": "x"}))
 	if !result.IsError || !strings.Contains(getText(t, result), "project_id") {
 		t.Fatalf("expected project_id validation error")
+	}
+}
+
+func TestSearchHandlersFallbackWithoutVector(t *testing.T) {
+	srv, stockRepo, _ := newTestServer(t)
+	ctx := context.Background()
+
+	stock := &domain.Stock{
+		ID:        "STK-DESIGN-001",
+		ProjectID: "proj-1",
+		Category:  domain.CategoryDesign,
+		Priority:  domain.PriorityP0,
+		Title:     "API Design",
+		Content:   "Design content",
+	}
+	if err := stockRepo.Create(ctx, stock); err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+
+	result, _ := srv.handleStockManage(ctx, newRequest(map[string]any{
+		"action":     "search",
+		"project_id": "proj-1",
+		"query":      "api",
+	}))
+	if result.IsError {
+		t.Fatalf("unexpected error on stock fallback search: %s", getText(t, result))
+	}
+	if !strings.Contains(getText(t, result), "STK-DESIGN-001") {
+		t.Fatalf("expected fallback stock search result, got: %s", getText(t, result))
+	}
+
+	result, _ = srv.handleContextSearch(ctx, newRequest(map[string]any{
+		"project_id": "proj-1",
+		"query":      "api",
+	}))
+	if result.IsError {
+		t.Fatalf("unexpected error on context fallback search: %s", getText(t, result))
+	}
+	if !strings.Contains(getText(t, result), "STK-DESIGN-001") {
+		t.Fatalf("expected context fallback result, got: %s", getText(t, result))
 	}
 }
 

@@ -19,6 +19,7 @@ func TestEnsureDataDirs(t *testing.T) {
 	paths := []string{
 		baseDir,
 		filepath.Join(baseDir, "stocks"),
+		filepath.Join(baseDir, "vectors"),
 	}
 
 	for _, p := range paths {

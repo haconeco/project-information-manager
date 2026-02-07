@@ -150,6 +150,65 @@ func TestContextServiceSearch(t *testing.T) {
 	}
 }
 
+func TestStockServiceListSummary(t *testing.T) {
+	stockRepo := repository.NewFileStockRepository(t.TempDir())
+	svc := NewStockService(stockRepo, nil)
+
+	input := CreateStockInput{
+		ProjectID: "test-project",
+		Category:  "management",
+		Priority:  "P2",
+		Title:     "管理方針",
+		Content:   "内容",
+		Tags:      []string{"policy"},
+	}
+	stock, err := svc.Create(context.Background(), input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	summaries, err := svc.ListSummary(context.Background(), "test-project", nil)
+	if err != nil {
+		t.Fatalf("list summary error: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	if summaries[0].ID != stock.ID {
+		t.Fatalf("expected ID %s, got %s", stock.ID, summaries[0].ID)
+	}
+	if summaries[0].Priority != domain.PriorityP2 {
+		t.Fatalf("expected priority P2, got %s", summaries[0].Priority.String())
+	}
+}
+
+func TestStockServiceSearchSummaryWithVector(t *testing.T) {
+	stockRepo := repository.NewFileStockRepository(t.TempDir())
+	stockSvc := NewStockService(stockRepo, nil)
+
+	stock, err := stockSvc.Create(context.Background(), CreateStockInput{
+		ProjectID: "proj-1",
+		Category:  "design",
+		Priority:  "P1",
+		Title:     "API設計",
+		Content:   "content",
+	})
+	if err != nil {
+		t.Fatalf("create stock: %v", err)
+	}
+
+	vector := &fakeVectorRepo{results: []repository.SearchResult{{ID: stock.ID}}}
+	searchSvc := NewStockService(stockRepo, vector)
+
+	results, err := searchSvc.SearchSummary(context.Background(), "api", 10, "proj-1")
+	if err != nil {
+		t.Fatalf("search summary error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+}
+
 func TestStockSummary(t *testing.T) {
 	stock := &domain.Stock{
 		ID:        "STK-DESIGN-001",

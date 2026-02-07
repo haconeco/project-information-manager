@@ -1,7 +1,7 @@
 # project information manager
 
 本プロジェクトで作成するアプリケーションは、AI Agentによるプロダクト開発を支援するために、コンテキスト情報を高度に管理する仕組みを提供する。
-MCPとSkills、RAGによって構成されることを想定する。
+MCPとSkills、RAGによって構成する。
 
 ## 主な機能
 
@@ -60,7 +60,7 @@ MCPとSkills、RAGによって構成されることを想定する。
 
 #### 言語選定の補足（Go vs Rust）
 
-Rustも検討したが、以下の理由でGoを採用した:
+Goによる高速な動作を目指した構成:
 
 * **Anthropic公式SDK**: Go版はv1.21でSkills API対応済み。Rust版は公式SDK未公開（GitHub 404）
 * **開発速度**: Goのシンプルな文法と高速コンパイルにより、プロトタイピングから本番投入までが高速

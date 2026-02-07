@@ -26,7 +26,8 @@ mcp_servers:
 （例: rules.md / agent_rules.md など）
 
 ```
-## MCP運用ルール（必須）
+## セッション内での設計・タスク状態管理ルール（必須）
+- MCP Server の project-information-manager を必ず利用して管理する。
 - すべての設計・ルール・方針の追加/変更は、必ず stock_manage で登録/更新する。
 - すべての進行中のタスク・課題・変更は、必ず state_manage で登録/更新/アーカイブする。
 - 情報参照は context_search を優先し、詳細が必要な場合のみ stock_manage read / state_manage read を使う。

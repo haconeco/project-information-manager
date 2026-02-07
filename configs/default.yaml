@@ -1,0 +1,15 @@
+# デフォルト設定ファイル
+
+# データ格納ディレクトリ（相対パス or 絶対パス）
+data_dir: data
+
+# LLM設定
+llm:
+  provider: anthropic           # anthropic | openai
+  # api_key: 環境変数 PIM_LLM_API_KEY を推奨
+  model: claude-sonnet-4-20250514
+
+# MCPサーバー設定
+mcp:
+  transport: stdio              # stdio | sse (将来対応)
+  name: project-information-manager

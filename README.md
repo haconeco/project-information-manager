@@ -3,6 +3,41 @@
 本プロジェクトで作成するアプリケーションは、AI Agentによるプロダクト開発を支援するために、コンテキスト情報を高度に管理する仕組みを提供する。
 MCPとSkills、RAGによって構成する。
 
+## Quickstart
+
+### Ollama埋め込みでRAGを有効化
+
+1. Ollamaをインストールし、ローカルで起動する。
+
+```bash
+brew install ollama
+ollama serve
+```
+
+2. 埋め込みモデルを取得する。
+
+```bash
+ollama pull nomic-embed-text
+```
+
+3. RAG設定の環境変数を設定する。
+
+```bash
+export PIM_RAG_ENABLED=true
+export PIM_RAG_COLLECTION=pim-context
+export PIM_RAG_EMBEDDING_PROVIDER=ollama
+export PIM_RAG_EMBEDDING_MODEL=nomic-embed-text
+export PIM_RAG_EMBEDDING_OLLAMA_BASE_URL=http://localhost:11434/api
+```
+
+4. MCPサーバーを起動する。
+
+```bash
+go run ./cmd/pim-server
+```
+
+5. `context_search` / `stock_manage action=search` / `state_manage action=search` を実行すると、ベクトル検索が有効になる。インデックスは [data/vectors/](data/vectors/) に保存される。
+
 ## 主な機能
 
 プロダクトごとに下記を実現するために、agent rule, agent workflow, agent skills, MCP の設定を自動構築するための汎用的な機能を提供する。
